@@ -1,0 +1,164 @@
+From e2917afc6b7462381137674656a143bdfab8f2bc Mon Sep 17 00:00:00 2001
+From: kindle4jerry <kindle4jerry@gmail.com>
+Date: Wed, 23 Aug 2023 18:38:20 +0800
+Subject: [PATCH 2/2] fix fod screen off
+
+Change-Id: I9e4a3ffa970c97e371925463856eea12877f6d8c
+---
+ .../fingerprint/FingerprintManager.java       |  2 +-
+ .../systemui/biometrics/UdfpsController.java  | 39 +++++++++++++++++--
+ services/core/Android.bp                      |  1 +
+ .../server/biometrics/AuthService.java        | 23 +++++++++++
+ 4 files changed, 61 insertions(+), 4 deletions(-)
+
+diff --git a/core/java/android/hardware/fingerprint/FingerprintManager.java b/core/java/android/hardware/fingerprint/FingerprintManager.java
+index 5c1da111..2fbf64ff 100644
+--- a/core/java/android/hardware/fingerprint/FingerprintManager.java
++++ b/core/java/android/hardware/fingerprint/FingerprintManager.java
+@@ -1598,8 +1598,8 @@ public class FingerprintManager implements BiometricAuthenticator, BiometricFing
+                 if (vendorCode < msgArray.length) {
+                     return msgArray[vendorCode];
+                 }
++                return "Fod Working!";
+             }
+-                break;
+             case FINGERPRINT_ACQUIRED_START:
+                 return null;
+         }
+diff --git a/packages/SystemUI/src/com/android/systemui/biometrics/UdfpsController.java b/packages/SystemUI/src/com/android/systemui/biometrics/UdfpsController.java
+index 030ea3f1..bf928664 100644
+--- a/packages/SystemUI/src/com/android/systemui/biometrics/UdfpsController.java
++++ b/packages/SystemUI/src/com/android/systemui/biometrics/UdfpsController.java
+@@ -110,6 +110,8 @@ import javax.inject.Provider;
+ 
+ import kotlin.Unit;
+ 
++import vendor.xiaomi.hw.touchfeature.V1_0.ITouchFeature;
++
+ /**
+  * Shows and hides the under-display fingerprint sensor (UDFPS) overlay, handles UDFPS touch events,
+  * and toggles the UDFPS display mode.
+@@ -220,6 +222,24 @@ public class UdfpsController implements DozeReceiver, Dumpable {
+     private final ScreenLifecycle.Observer mScreenObserver = new ScreenLifecycle.Observer() {
+         @Override
+         public void onScreenTurnedOn() {
++            Log.i("PHH-Enroll", "onScreenTurnedOff: UNLOCKED");
++            final Handler handler = new Handler();
++            handler.postDelayed(new Runnable() {
++                @Override
++                public void run() {
++                    Log.i("PHH-Enroll", "inside handler");
++                    try {
++                        var res = ITouchFeature.getService().setTouchMode(0, 10, 0);
++                        if(res != 0){
++                            Log.d("PHH-Enroll", "SetTouchMode 10,0 was NOT executed successfully. Res is " + res);
++                        }
++                    }catch (Exception e){
++                        Log.i("PHH-Enroll", "ITouchFeature setTouchMode eror: ", e);
++
++                    }
++                }
++            }, 800);
++
+             mScreenOn = true;
+             if (mAodInterruptRunnable != null) {
+                 mAodInterruptRunnable.run();
+@@ -229,6 +249,17 @@ public class UdfpsController implements DozeReceiver, Dumpable {
+ 
+         @Override
+         public void onScreenTurnedOff() {
++            Log.i("PHH-Enroll", "onScreenTurnedOff: LOCKED");
++            try {
++                var res = ITouchFeature.getService().setTouchMode(0, 10, 1);
++
++                if(res != 0){
++                    Log.d("PHH-Enroll", "SetTouchMode 10,1 was NOT executed successfully. Res is " + res);
++                }
++            }catch (Exception e){
++                Log.i("PHH-Enroll", "ITouchFeature setTouchMode eror: ", e);
++
++            }
+             mScreenOn = false;
+         }
+     };
+@@ -301,9 +332,11 @@ public class UdfpsController implements DozeReceiver, Dumpable {
+                 boolean acquiredVendor = acquiredInfo == FINGERPRINT_ACQUIRED_VENDOR;
+                 final boolean isAodEnabled = mAmbientDisplayConfiguration.alwaysOnEnabled(UserHandle.USER_CURRENT);
+                 final boolean isShowingAmbientDisplay = mStatusBarStateController.isDozing() && mScreenOn;
+-
+-                if (acquiredVendor && ((mScreenOffFod && !mScreenOn) || (isAodEnabled && isShowingAmbientDisplay))) {
+-                    if (vendorCode == mUdfpsVendorCode) {
++                final boolean isDozing = mStatusBarStateController.isDozing() || !mScreenOn;
++                if (!mScreenOn || acquiredVendor && vendorCode == mUdfpsVendorCode) {
++                    if (!mScreenOn ||
++                            (mScreenOffFod && isDozing) /** Screen off and dozing */ ||
++                            (mKeyguardUpdateMonitor.isDreaming() && mScreenOn) /** AOD or pulse */) {
+                         mPowerManager.wakeUp(mSystemClock.uptimeMillis(),
+                                 PowerManager.WAKE_REASON_GESTURE, TAG);
+                         onAodInterrupt(0, 0, 0, 0);
+diff --git a/services/core/Android.bp b/services/core/Android.bp
+index 627129ae..2a3409eb 100644
+--- a/services/core/Android.bp
++++ b/services/core/Android.bp
+@@ -174,6 +174,7 @@ java_library_static {
+         "overlayable_policy_aidl-java",
+         "com.android.sysprop.watchdog",
+         "faceunlock_framework",
++        "vendor.xiaomi.hw.touchfeature-V1.0-java",
+         "vendor.xiaomi.hardware.fingerprintextension-V1.0-java",
+     ],
+     javac_shard_size: 50,
+diff --git a/services/core/java/com/android/server/biometrics/AuthService.java b/services/core/java/com/android/server/biometrics/AuthService.java
+index 38881de1..b7941017 100644
+--- a/services/core/java/com/android/server/biometrics/AuthService.java
++++ b/services/core/java/com/android/server/biometrics/AuthService.java
+@@ -63,6 +63,7 @@ import android.os.RemoteException;
+ import android.os.ServiceManager;
+ import android.os.SystemProperties;
+ import android.os.UserHandle;
++import android.os.Handler;
+ import android.provider.Settings;
+ import android.util.Slog;
+ 
+@@ -90,6 +91,7 @@ import android.os.Build;
+ 
+ 
+ import vendor.xiaomi.hardware.fingerprintextension.V1_0.IXiaomiFingerprint;
++import vendor.xiaomi.hw.touchfeature.V1_0.ITouchFeature;
+ /**
+  * System service that provides an interface for authenticating with biometrics and
+  * PIN/pattern/password to BiometricPrompt and lock screen.
+@@ -690,9 +692,30 @@ public class AuthService extends SystemService {
+                         if ("0".equals(isFodPressed)) {
+                             Slog.d("PHH-Enroll", "Fod un-pressed!");
+                             mXiaomiFingerprint.extCmd(4, 0);
++                            Slog.i("PHH-Enroll", "onScreenTurnedOff: LOCKED");
++                            try {
++                                var res = ITouchFeature.getService().setTouchMode(0, 10, 0);
++
++                                if(res != 0){
++                                    Slog.d("PHH-Enroll", "SetTouchMode 10,1 was NOT executed successfully. Res is " + res);
++                                }
++                            }catch (Exception e){
++                                Slog.i("PHH-Enroll", "ITouchFeature setTouchMode eror: ", e);
++
++                            }
+                         } else if ("1".equals(isFodPressed)) {
+                             Slog.d("PHH-Enroll", "Fod pressed!");
+                             mXiaomiFingerprint.extCmd(4, 1);
++                            try {
++                                var res = ITouchFeature.getService().setTouchMode(0, 10, 1);
++
++                                if(res != 0){
++                                    Slog.d("PHH-Enroll", "SetTouchMode 10,1 was NOT executed successfully. Res is " + res);
++                                }
++                            }catch (Exception e){
++                                Slog.i("PHH-Enroll", "ITouchFeature setTouchMode eror: ", e);
++
++                            }
+                         }
+                     } catch (Exception e) {
+                         Slog.d("PHH-Enroll", "Failed Xiaomi async extcmd", e);
+-- 
+2.25.1
+
