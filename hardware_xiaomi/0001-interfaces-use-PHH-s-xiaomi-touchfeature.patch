@@ -1,0 +1,192 @@
+From d9ab5ca6675be7c836d26ea2af7f57cbd812f12f Mon Sep 17 00:00:00 2001
+From: kindle4jerry <kindle4jerry@gmail.com>
+Date: Thu, 24 Aug 2023 11:19:52 +0800
+Subject: [PATCH] interfaces: use PHH's xiaomi touchfeature
+
+---
+ .../hardware/touchfeature/1.0/Android.bp      |  2 +-
+ .../touchfeature/1.0/ITouchFeature.hal        | 32 ++++++-------------
+ .../hardware/touchfeature/1.0/types.hal       | 27 ++++++++++++++++
+ .../xiaomi/hw/touchfeature/1.0/Android.bp     |  3 +-
+ .../hw/touchfeature/1.0/ITouchFeature.hal     | 23 ++++++-------
+ .../xiaomi/hw/touchfeature/1.0/types.hal      | 28 ++++++++++++++++
+ 6 files changed, 76 insertions(+), 39 deletions(-)
+ create mode 100644 interfaces/xiaomi/hardware/touchfeature/1.0/types.hal
+ create mode 100644 interfaces/xiaomi/hw/touchfeature/1.0/types.hal
+
+diff --git a/interfaces/xiaomi/hardware/touchfeature/1.0/Android.bp b/interfaces/xiaomi/hardware/touchfeature/1.0/Android.bp
+index f0db33e..bc7862f 100644
+--- a/interfaces/xiaomi/hardware/touchfeature/1.0/Android.bp
++++ b/interfaces/xiaomi/hardware/touchfeature/1.0/Android.bp
+@@ -3,8 +3,8 @@
+ hidl_interface {
+     name: "vendor.xiaomi.hardware.touchfeature@1.0",
+     root: "vendor.xiaomi",
+-    system_ext_specific: true,
+     srcs: [
++        "types.hal",
+         "ITouchFeature.hal",
+     ],
+     interfaces: [
+diff --git a/interfaces/xiaomi/hardware/touchfeature/1.0/ITouchFeature.hal b/interfaces/xiaomi/hardware/touchfeature/1.0/ITouchFeature.hal
+index 1ea6586..4f12729 100644
+--- a/interfaces/xiaomi/hardware/touchfeature/1.0/ITouchFeature.hal
++++ b/interfaces/xiaomi/hardware/touchfeature/1.0/ITouchFeature.hal
+@@ -1,27 +1,13 @@
+-/*
+- * Copyright (C) 2019-2020 The LineageOS Project
+- *
+- * Licensed under the Apache License, Version 2.0 (the "License");
+- * you may not use this file except in compliance with the License.
+- * You may obtain a copy of the License at
+- *
+- *      http://www.apache.org/licenses/LICENSE-2.0
+- *
+- * Unless required by applicable law or agreed to in writing, software
+- * distributed under the License is distributed on an "AS IS" BASIS,
+- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+- * See the License for the specific language governing permissions and
+- * limitations under the License.
+- */
+-
+ package vendor.xiaomi.hardware.touchfeature@1.0;
+ 
+ interface ITouchFeature {
+-    setTouchMode(int32_t mode, int32_t value) generates (int32_t result);
+-    getTouchModeCurValue(int32_t mode) generates (int32_t result);
+-    getTouchModeMaxValue(int32_t mode) generates (int32_t result);
+-    getTouchModeMinValue(int32_t mode) generates (int32_t result);
+-    getTouchModeDefValue(int32_t mode) generates (int32_t result);
+-    resetTouchMode(int32_t mode) generates (int32_t result);
+-    getModeValues(int32_t mode) generates (vec<int32_t> result);
++     // Return value int32_t val < 0 means error
++    setTouchMode(uint32_t mode, uint32_t value) generates (int32_t val);
++    getTouchModeCurValue(uint32_t mode) generates (int32_t val);
++    getTouchModeMaxValue(uint32_t mode) generates (int32_t val);
++    getTouchModeMinValue(uint32_t mode) generates (int32_t val);
++    getTouchModeDefValue(uint32_t mode) generates (int32_t val);
++    getModeValues(uint32_t mode) generates (vec<uint32_t> val);
++    resetTouchMode(uint32_t mode) generates (uint32_t val);
++    setEdgeMode(uint32_t mode, uint32_t length, vec<uint32_t> value) generates(int32_t val); // error is val != 0
+ };
+diff --git a/interfaces/xiaomi/hardware/touchfeature/1.0/types.hal b/interfaces/xiaomi/hardware/touchfeature/1.0/types.hal
+new file mode 100644
+index 0000000..6de120a
+--- /dev/null
++++ b/interfaces/xiaomi/hardware/touchfeature/1.0/types.hal
+@@ -0,0 +1,27 @@
++package vendor.xiaomi.hardware.touchfeature@1.0;
++
++enum TouchFeature : uint32_t {
++    DOUBLE_TAP = 1,
++    GLOBAL_TOUCH_DIRECTION = 2,
++    EDGE_MODE = 4,
++    DRIVER_DEBUGLEVEL = 8,
++    REMOVE_EDGE_SETTINGS = 64,
++};
++
++enum TouchCommand : uint32_t {
++    GAME_MODE = 0,
++    ACTIVE_MODE = 1,
++    UP_THRESHOLD = 2,
++    TOLERANCE = 3,
++    WGH_MIN = 4,
++    WGH_MAX = 5,
++    WGH_STEP = 6,
++    EDGE_FILTER = 7,
++    MODE_DIRECTION = 8,
++    FOD = 9,
++    DOUBLETAP_MODE = 14,
++    EDGE_MODE = 15,
++    DEBUG_LEVEL = 18,
++    STYLUS_MODE = 20,
++    PERFORMANCE_MODE = 21,
++};
+diff --git a/interfaces/xiaomi/hw/touchfeature/1.0/Android.bp b/interfaces/xiaomi/hw/touchfeature/1.0/Android.bp
+index f0fdbe7..92d24e0 100644
+--- a/interfaces/xiaomi/hw/touchfeature/1.0/Android.bp
++++ b/interfaces/xiaomi/hw/touchfeature/1.0/Android.bp
+@@ -3,8 +3,8 @@
+ hidl_interface {
+     name: "vendor.xiaomi.hw.touchfeature@1.0",
+     root: "vendor.xiaomi",
+-    system_ext_specific: true,
+     srcs: [
++        "types.hal",
+         "ITouchFeature.hal",
+     ],
+     interfaces: [
+@@ -12,3 +12,4 @@ hidl_interface {
+     ],
+     gen_java: true,
+ }
++
+diff --git a/interfaces/xiaomi/hw/touchfeature/1.0/ITouchFeature.hal b/interfaces/xiaomi/hw/touchfeature/1.0/ITouchFeature.hal
+index 28cc4f3..1dfc023 100644
+--- a/interfaces/xiaomi/hw/touchfeature/1.0/ITouchFeature.hal
++++ b/interfaces/xiaomi/hw/touchfeature/1.0/ITouchFeature.hal
+@@ -1,18 +1,13 @@
+-/*
+- * Copyright (C) 2022 The LineageOS Project
+- *
+- * SPDX-License-Identifier: Apache-2.0
+- */
+-
+ package vendor.xiaomi.hw.touchfeature@1.0;
+ 
+ interface ITouchFeature {
+-    getModeCurValue(int32_t touchId, int32_t ControlMode) generates (int32_t result);
+-    getModeDefaultValue(int32_t touchId, int32_t ControlMode) generates (int32_t result);
+-    getModeMaxValue(int32_t touchId, int32_t ControlMode) generates (int32_t result);
+-    getModeMinValue(int32_t touchId, int32_t ControlMode) generates (int32_t result);
+-    getModeValue(int32_t touchId, int32_t mode) generates (vec<int32_t> result);
+-    modeReset(int32_t touchId, int32_t ControlMode) generates (int32_t result);
+-    setModeLongValue(int32_t touchId, int32_t ControlMode, uint32_t ValueLen, vec<int32_t> ValueBuf) generates (int32_t result);
+-    setModeValue(int32_t touchId, int32_t ControlMode, int32_t ModeValue) generates (int32_t result);
++     // Return value int32_t val < 0 means error
++    setTouchMode(uint32_t touchId, uint32_t mode, uint32_t value) generates (int32_t val);
++    getTouchModeCurValue(uint32_t touchId, uint32_t mode) generates (int32_t val);
++    getTouchModeMaxValue(uint32_t touchId, uint32_t mode) generates (int32_t val);
++    getTouchModeMinValue(uint32_t touchId, uint32_t mode) generates (int32_t val);
++    getTouchModeDefValue(uint32_t touchId, uint32_t mode) generates (int32_t val);
++    getModeValues(uint32_t touchId, uint32_t mode) generates (vec<uint32_t> val);
++    resetTouchMode(uint32_t touchId, uint32_t mode) generates (uint32_t val);
++    setEdgeMode(uint32_t touchId, uint32_t mode, uint32_t length, vec<uint32_t> value) generates(int32_t val); // error is val != 0
+ };
+diff --git a/interfaces/xiaomi/hw/touchfeature/1.0/types.hal b/interfaces/xiaomi/hw/touchfeature/1.0/types.hal
+new file mode 100644
+index 0000000..419f83f
+--- /dev/null
++++ b/interfaces/xiaomi/hw/touchfeature/1.0/types.hal
+@@ -0,0 +1,28 @@
++package vendor.xiaomi.hw.touchfeature@1.0;
++
++
++enum TouchFeature : uint32_t {
++    DOUBLE_TAP = 1,
++    GLOBAL_TOUCH_DIRECTION = 2,
++    EDGE_MODE = 4,
++    DRIVER_DEBUGLEVEL = 8,
++    REMOVE_EDGE_SETTINGS = 64,
++};
++
++enum TouchCommand : uint32_t {
++    GAME_MODE = 0,
++    ACTIVE_MODE = 1,
++    UP_THRESHOLD = 2,
++    TOLERANCE = 3,
++    WGH_MIN = 4,
++    WGH_MAX = 5,
++    WGH_STEP = 6,
++    EDGE_FILTER = 7,
++    MODE_DIRECTION = 8,
++    FOD = 9,
++    DOUBLETAP_MODE = 14,
++    EDGE_MODE = 15,
++    DEBUG_LEVEL = 18,
++    STYLUS_MODE = 20,
++    PERFORMANCE_MODE = 21,
++};
+-- 
+2.25.1
+
